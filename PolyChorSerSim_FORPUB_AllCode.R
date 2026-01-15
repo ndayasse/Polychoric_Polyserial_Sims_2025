@@ -350,12 +350,14 @@ poly.chor.ser.fntn <- function(
     poly.dat$Latent_2 <- poly.dat$OrigLatent_2
     
     #   Compute the correlation between the continuous latent variables:
-    latent.pears <- cor.test(poly.dat$Latent_1, poly.dat$Latent_2, 
-                             method="pearson")
     latent.spear <- cor.test(poly.dat$Latent_1, poly.dat$Latent_2, 
                              method="spearman")
-    latent.pears.r <- latent.pears$estimate
     latent.spear.r <- latent.spear$estimate
+    if (incl.pears) {
+      latent.pears <- cor.test(poly.dat$Latent_1, poly.dat$Latent_2, 
+                               method="pearson")
+      latent.pears.r <- latent.pears$estimate
+    } else { latent.pears.r <- NA }
     
     
     # If EITHER latent var is skewed (EITHER skew.dir is NOT 0):
@@ -397,12 +399,14 @@ poly.chor.ser.fntn <- function(
     }
     
     #   Compute the correlation between the skewed continuous latent variables:
-    latent.pears <- cor.test(poly.dat$Latent_1, poly.dat$Latent_2, 
-                             method="pearson")
     latent.spear <- cor.test(poly.dat$Latent_1, poly.dat$Latent_2, 
                              method="spearman")
-    latent.pears.r <- latent.pears$estimate
     latent.spear.r <- latent.spear$estimate
+    if (incl.pears) {
+      latent.pears <- cor.test(poly.dat$Latent_1, poly.dat$Latent_2, 
+                               method="pearson")
+      latent.pears.r <- latent.pears$estimate
+    } else { latent.pears.r <- NA }
     
   }
   
@@ -560,6 +564,7 @@ poly.chor.ser.fntn <- function(
   
   
 } #end function [poly.chor.ser.fntn]
+
 
 
 
