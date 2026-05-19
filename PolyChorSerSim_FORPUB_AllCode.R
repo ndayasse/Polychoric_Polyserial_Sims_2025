@@ -6,7 +6,8 @@
 
 
 # Clear working environment:
-rm(list=ls())
+rm(list=ls()) # removes all objects from default environment
+gc() # 'garbage collection' - free unused R memory & memory usage report
 
 
 # Load Packages: --------------------------------------------------------------- ####
@@ -284,7 +285,7 @@ very.simple.ord.item.fntn <- function(
 
 
 
-# Main Computations (Function): ------------------------------------------------ ####
+# Main Simulation & Computations (Function): ----------------------------------- ####
 
 
 # Notes on Arguments / Inputs:
@@ -297,7 +298,8 @@ very.simple.ord.item.fntn <- function(
 #  @latent.mean:  population mean (mu) of the latent variables [default 0]
 #  @latent.sd:    population standard deviation (sigma) of the latent variables
 #                   [default 1]
-#  @skew.shape:   gamma shape parameter to use for skewed distributions
+#  @gamma.shape:   gamma shape parameter to use for skewed distributions
+#  @gamma.shape.norm: gamma shape parameter to use for 'normal' distributions
 #  @skew.dir.1:   values of 0, 1, or -1 ; indicates whether item 1 is skewed 
 #                   and if so which direction [1 for positive; -1 for negative]
 #  @skew.dir.2:   values of 0, 1, or -1 ; indicates whether item 2 is skewed 
@@ -321,118 +323,93 @@ very.simple.ord.item.fntn <- function(
 
 poly.chor.ser.fntn <- function(
     sample.size, data.type, corr.pop.val, latent.mean=0, latent.sd=1, 
-    skew.shape=0, skew.dir.1=0, skew.dir.2=0, 
+    gamma.shape=0, gamma.shape.norm=999, skew.dir.1=0, skew.dir.2=0, 
     int.vec.1=NULL, int.vec.2=NULL, int.vec=NULL, 
     incl.pears=FALSE, run.ml.poly=TRUE ) { 
   
   
   
   
-  # Sim correlated continuous Latent vars: --- #
+  # Sim using correlated continuous Latent vars: --- #
   
   poly.dat <- data.frame("USUBJID"=c(1:sample.size))
   
-  # Start (always) with two normal latent variables that are correlated:
+  
+  # Start w/ 2 normal latent vars that are correlated - regardless of condition:
   temp.dat <- faux::rnorm_multi(n=sample.size, vars=2, mu=latent.mean, 
-                                sd=latent.sd, r=corr.pop.val, empirical=FALSE, 
+                                sd=latent.sd, r=corr.val, empirical=FALSE, 
                                 varnames=c("OrigLatent_1","OrigLatent_2"))
   
-  #   Join latent variables with the USUBJID's:
+  # Join latent variables with the USUBJID's:
   poly.dat <- cbind(poly.dat, temp.dat)
   
-  # If BOTH latent variables are centered:
-  if (skew.dir.1==0 & skew.dir.2==0) {
+  
+  
+  
+  # Conduct gamma transformations of latent variables: --- #
+  
+  #   Compute Gamma Rates:
+  gamma.rate.norm <- sqrt(gamma.shape.norm/(latent.sd^2)) # 0 # 
+  gamma.rate <- sqrt(gamma.shape/(latent.sd^2))
+  
+  #   For 'normal' latent vars - Transform using faux package:
+  if (skew.val.1==0) {
     
-    skew.rate <- 0
+    # Transform:
+    poly.dat$Latent_1 <- faux::norm2gamma( 
+      x=poly.dat$OrigLatent_1, mu=latent.mean, sd=latent.sd, 
+      shape=gamma.shape.norm, rate=gamma.rate.norm)
     
-    # Using the original normal latent variables in this case:
-    poly.dat$Latent_1 <- poly.dat$OrigLatent_1
-    poly.dat$Latent_2 <- poly.dat$OrigLatent_2
+    # Re-center at intended population mean:
+    obs1.mean <- mean(poly.dat$Latent_1, na.rm=T)
+    obsmexp1.mean <- obs1.mean - latent.mean
+    poly.dat$Latent_1 <- poly.dat$Latent_1 - obsmexp1.mean
     
-    #   Compute the correlation between the continuous latent variables:
-    latent.spear <- cor.test(poly.dat$Latent_1, poly.dat$Latent_2, 
-                             method="spearman")
-    latent.spear.r <- latent.spear$estimate
-    if (incl.pears) {
-      latent.pears <- cor.test(poly.dat$Latent_1, poly.dat$Latent_2, 
-                               method="pearson")
-      latent.pears.r <- latent.pears$estimate
-    } else { latent.pears.r <- NA }
+  }
+  if (skew.val.2==0) {
     
+    # Transform:
+    poly.dat$Latent_2 <- faux::norm2gamma( 
+      x=poly.dat$OrigLatent_2, mu=latent.mean, sd=latent.sd, 
+      shape=gamma.shape.norm, rate=gamma.rate.norm)
     
-    # If EITHER latent var is skewed (EITHER skew.dir is NOT 0):
-  } else if (skew.dir.1!=0 | skew.dir.2!=0) {
-    
-    # Compute Skew Rate:
-    skew.rate <- sqrt(skew.shape/(latent.sd^2))
-    
-    # FIRST Variable:
-    if (skew.dir.1!=0) {
-      # Transform to POSITIVE skewed (gamma) using faux package:
-      poly.dat$Latent_1 <- faux::norm2gamma( 
-        x=poly.dat$OrigLatent_1, mu=latent.mean, sd=latent.sd, # pop mean and SD of X (input var)
-        shape=skew.shape, rate=skew.rate)
-      
-      # If want NEGATIVE Skewed:
-      if (skew.dir.1<0) {
-        poly.dat$Latent_1 <- (-1)*poly.dat$Latent_1
-      }
-      
-    } else {
-      poly.dat$Latent_1 <- poly.dat$OrigLatent_1
-    }
-    
-    # SECOND Variable:
-    if (skew.dir.2!=0) {
-      # Transform to POSITIVE skewed (gamma) using faux package:
-      poly.dat$Latent_2 <- faux::norm2gamma( 
-        x=poly.dat$OrigLatent_2, mu=latent.mean, sd=latent.sd, # pop mean and SD of X (input var)
-        shape=skew.shape, rate=skew.rate)
-      
-      # If want NEGATIVE Skewed:
-      if (skew.dir.2<0) {
-        poly.dat$Latent_2 <- (-1)*poly.dat$Latent_2
-      }
-      
-    } else {
-      poly.dat$Latent_2 <- poly.dat$OrigLatent_2
-    }
-    
-    #   Compute the correlation between the skewed continuous latent variables:
-    latent.spear <- cor.test(poly.dat$Latent_1, poly.dat$Latent_2, 
-                             method="spearman")
-    latent.spear.r <- latent.spear$estimate
-    if (incl.pears) {
-      latent.pears <- cor.test(poly.dat$Latent_1, poly.dat$Latent_2, 
-                               method="pearson")
-      latent.pears.r <- latent.pears$estimate
-    } else { latent.pears.r <- NA }
+    # Re-center at intended population mean:
+    obs2.mean <- mean(poly.dat$Latent_2, na.rm=T)
+    obsmexp2.mean <- obs2.mean - latent.mean
+    poly.dat$Latent_2 <- poly.dat$Latent_2 - obsmexp2.mean
     
   }
   
-  
-  
-  
-  # Polychotomize into Ordinal Items: --- #
-  
-  if (tolower(data.type)=="polychoric") {
+  #   For skewed gamma latent vars - Transform using faux package:
+  if (skew.val.1!=0) {
     
-    if ((is.null(int.vec.1) | is.null(int.vec.2)) & !is.null(int.vec)) {
-      if (is.null(int.vec.1) & is.null(int.vec.2)) {
-        int.vec.1 <- int.vec; int.vec.2 <- int.vec
-        warning(paste0("Defaulting to using @int.vec values [",paste0(
-          int.vec, collapse=", "),"] for BOTH items' intercepts"))
-      } else if (!is.null(int.vec.1)) {
-        int.vec.2 <- int.vec
-        warning(paste0("Defaulting to using @int.vec values [",paste0(
-          int.vec, collapse=", "),"] for the second item's intercepts"))
-      } else if (!is.null(int.vec.2)) {
-        int.vec.1 <- int.vec
-        warning(paste0("Defaulting to using @int.vec values [",paste0(
-          int.vec, collapse=", "),"] for the first item's intercepts"))
-      }
-    }
-    if (is.null(int.vec) & !is.null(int.vec.1)) { int.vec <- int.vec.1 }
+    # Transform to POSITIVE skewed (gamma) using faux package:
+    poly.dat$Latent_1 <- faux::norm2gamma( 
+      x=poly.dat$OrigLatent_1, mu=latent.mean, sd=latent.sd, # pop mean and SD of X (input var)
+      shape=gamma.shape, rate=gamma.rate)
+    
+    # If want NEGATIVE Skewed:
+    if (skew.val.1<0) { poly.dat$Latent_1 <- (-1)*poly.dat$Latent_1 }
+    
+  } 
+  if (skew.val.2!=0) {
+    
+    # Transform to POSITIVE skewed (gamma) using faux package:
+    poly.dat$Latent_2 <- faux::norm2gamma( 
+      x=poly.dat$OrigLatent_2, mu=latent.mean, sd=latent.sd, # pop mean and SD of X (input var)
+      shape=gamma.shape, rate=gamma.rate)
+    
+    # If want NEGATIVE Skewed:
+    if (skew.val.2<0) { poly.dat$Latent_2 <- (-1)*poly.dat$Latent_2 }
+    
+  } 
+  
+  
+  
+  
+  # Create the ordinal item(s) from latent vars: --- #
+  
+  if (distrib.cur=="Polychoric") {
     
     # Item 1 based on Latent_1:
     ord.item1 <- very.simple.ord.item.fntn(
@@ -442,19 +419,16 @@ poly.chor.ser.fntn <- function(
     ord.item2 <- very.simple.ord.item.fntn(
       vector=poly.dat$Latent_2, item.intercepts=int.vec.2, output.df=FALSE)
     
-    # Put both into the main df:
+    # Join both onto the main df:
     poly.dat$Item_1 <- ord.item1
     poly.dat$Item_2 <- ord.item2
     
-  } else if (tolower(data.type)=="polyserial") {
-    
-    if (is.null(int.vec) & !is.null(int.vec.1)) { int.vec <- int.vec.1 
-    } else if (is.null(int.vec) & !is.null(int.vec.2)) { int.vec <- int.vec.2 }
+  } else if (distrib.cur=="Polyserial") {
     
     # Item 1 based on Latent_1:
     ord.item1 <- very.simple.ord.item.fntn(
       vector=poly.dat$Latent_1, item.intercepts=int.vec, output.df=FALSE)
-    #   Put into the main df:
+    #   Join onto the main df:
     poly.dat$Item_1 <- ord.item1
     
     # Item 2 IS Latent_2:
@@ -465,50 +439,116 @@ poly.chor.ser.fntn <- function(
   
   
   
-  # Calculate item correlations: --- #
+  # Compute Correlations (All): --- #
+  
+  
+  
+  # Between Latent Variables:
+  
+  #   Correlations between latent variables underlying ordinal items:
+  latent.pears <- cor.test(poly.dat$Latent_1, poly.dat$Latent_2, 
+                           method="pearson")
+  latent.spear <- cor.test(poly.dat$Latent_1, poly.dat$Latent_2, 
+                           method="spearman")
+  latent.pears.r <- latent.pears$estimate
+  latent.spear.r <- latent.spear$estimate
+  
+  #   Correlations between *original* continuous-normal latent variables:
+  origltnt.pears <- cor.test(poly.dat$OrigLatent_1, poly.dat$OrigLatent_2, 
+                             method="pearson")
+  origltnt.spear <- cor.test(poly.dat$OrigLatent_1, poly.dat$OrigLatent_2, 
+                             method="spearman")
+  origltnt.pears.r <- origltnt.pears$estimate
+  origltnt.spear.r <- origltnt.spear$estimate
+  
+  #   Correls b/w *original* latent vars & their transformed versions:
+  origvltnt.v1.pears <- cor.test(poly.dat$OrigLatent_1, poly.dat$Latent_1, 
+                                 method="pearson")
+  origvltnt.v1.spear <- cor.test(poly.dat$OrigLatent_1, poly.dat$Latent_1, 
+                                 method="spearman")
+  origvltnt.v2.pears <- cor.test(poly.dat$OrigLatent_2, poly.dat$Latent_2, 
+                                 method="pearson")
+  origvltnt.v2.spear <- cor.test(poly.dat$OrigLatent_2, poly.dat$Latent_2, 
+                                 method="spearman")
+  origvltnt.v1.pears.r <- origvltnt.v1.pears$estimate
+  origvltnt.v1.spear.r <- origvltnt.v1.spear$estimate
+  origvltnt.v2.pears.r <- origvltnt.v2.pears$estimate
+  origvltnt.v2.spear.r <- origvltnt.v2.spear$estimate
+  
+  #   Concordance ICC b/w *original* latent vars & their transformed versions:
+  
+  #     Var 1:
+  v1.df <- dplyr::select(
+    poly.dat, c("OrigLatent_1","Latent_1")) %>% as.data.frame()
+  origvltnt.v1.icc.all <- psych::ICC(x=v1.df)
+  origvltnt.v1.icc.c1 <- origvltnt.v1.icc.all$results[which(
+    origvltnt.v1.icc.all$results$type=="ICC3"),"ICC"]
+  origvltnt.v1.icc.c1.locl <- origvltnt.v1.icc.all$results[which(
+    origvltnt.v1.icc.all$results$type=="ICC3"),"lower bound"]
+  origvltnt.v1.icc.c1.upcl <- origvltnt.v1.icc.all$results[which(
+    origvltnt.v1.icc.all$results$type=="ICC3"),"upper bound"]
+  
+  #     Var 2:
+  v2.df <- dplyr::select(
+    poly.dat, c("OrigLatent_2","Latent_2")) %>% as.data.frame()
+  origvltnt.v2.icc.all <- psych::ICC(x=v2.df)
+  origvltnt.v2.icc.c1 <- origvltnt.v2.icc.all$results[which(
+    origvltnt.v2.icc.all$results$type=="ICC3"),"ICC"]
+  origvltnt.v2.icc.c1.locl <- origvltnt.v2.icc.all$results[which(
+    origvltnt.v2.icc.all$results$type=="ICC3"),"lower bound"]
+  origvltnt.v2.icc.c1.upcl <- origvltnt.v2.icc.all$results[which(
+    origvltnt.v2.icc.all$results$type=="ICC3"),"upper bound"]
+  
+  
+  
+  # Between Items:
   
   
   # Spearman:
-  spear.item.results <- cor.test(poly.dat$Item_1, poly.dat$Item_2, 
-                                 method="spearman")
-  spear.item.r <- spear.item.results$estimate
+  spear.item <- cor.test(poly.dat$Item_1, poly.dat$Item_2, 
+                         method="spearman")
+  spear.item.r <- spear.item$estimate
   
   
   # Pearson:
   if (incl.pears) {
-    pears.item.results <- cor.test(poly.dat$Item_1, poly.dat$Item_2, 
-                                   method="pearson")
-    pears.item.r <- pears.item.results$estimate
+    pears.item <- cor.test(poly.dat$Item_1, poly.dat$Item_2, 
+                           method="pearson")
+    pears.item.r <- pears.item$estimate
   } else { pears.item.r <- NA }
   
   
   # Polychoric:
-  if (tolower(data.type)=="polychoric") {
+  if (distrib.cur=="Polychoric") {
     
-    # Compute via Polycor package:
-    poly.r.2stp <- polycor::polychor(
+    # Via Polycor Package (fewer issues/errors than Psych package):
+    polychor.results <- polycor::polychor(
       poly.dat$Item_1, poly.dat$Item_2, ML=FALSE, std.err=FALSE)
+    poly.r.2stp <- polychor.results
     
-    #   Also run ML version:
-    if (run.ml.poly) {
-      poly.r.ml <- polycor::polychor(
+    # If run.ml.polycor is TRUE, also run via ML:
+    if (run.ml.polycor) {
+      polychor.results.ml <- polycor::polychor(
         poly.dat$Item_1, poly.dat$Item_2, ML=TRUE, std.err=FALSE)
+      poly.r.ml <- polychor.results.ml
     } else { poly.r.ml <- NA }
     
   } #end if polychoric - calc polychoric correlations
   
   
   # Polyserial:
-  if (tolower(data.type)=="polyserial") {
+  if (distrib.cur=="Polyserial") {
     
-    # Compute via Polycor package:
-    poly.r.2stp <- polycor::polyserial(
+    # Via Polycor Package (fewer issues/errors than Psych package):
+    polyser.results <- polycor::polyserial(
       poly.dat$Item_2, poly.dat$Item_1, ML=FALSE, std.err=FALSE)
+    poly.r.2stp <- polyser.results
     
-    #   Also run ML version:
-    if (run.ml.poly) {
-      poly.r.ml <- polycor::polyserial(
+    # If run.ml.polycor is TRUE, also run via ML:
+    if (run.ml.polycor) {
+      polyser.results.ml <- polycor::polyserial(
         poly.dat$Item_2, poly.dat$Item_1, ML=TRUE, std.err=FALSE)
+      poly.r.ml <- polyser.results.ml
     } else { poly.r.ml <- NA }
     
     
@@ -517,17 +557,21 @@ poly.chor.ser.fntn <- function(
   
   
   
-  # Calculate the Observed Skewness & Kurtosis of the Latent Variables & Items: --- #
+  # Calculate Observed Skewness & Kurtosis of Latent Variables & Items: --- #
   
   obs.skew.ltnt1 <- moments::skewness(poly.dat$Latent_1)
   obs.skew.ltnt2 <- moments::skewness(poly.dat$Latent_2)
   obs.skew.item1 <- moments::skewness(poly.dat$Item_1)
   obs.skew.item2 <- moments::skewness(poly.dat$Item_2)
+  obs.skew.oltnt1 <- moments::skewness(poly.dat$OrigLatent_1)
+  obs.skew.oltnt2 <- moments::skewness(poly.dat$OrigLatent_2)
   
   obs.kurt.ltnt1 <- moments::kurtosis(poly.dat$Latent_1)
   obs.kurt.ltnt2 <- moments::kurtosis(poly.dat$Latent_2)
   obs.kurt.item1 <- moments::kurtosis(poly.dat$Item_1)
   obs.kurt.item2 <- moments::kurtosis(poly.dat$Item_2)
+  obs.kurt.oltnt1 <- moments::kurtosis(poly.dat$OrigLatent_1)
+  obs.kurt.oltnt2 <- moments::kurtosis(poly.dat$OrigLatent_2)
   
   
   
@@ -540,31 +584,47 @@ poly.chor.ser.fntn <- function(
     "Data.Type" = data.type, 
     
     # Observed Correlations Results:
-    "Latent.Pearson" = latent.pears.item.r,
-    "Latent.Spearman" = latent.spear.item.r,
+    "Latent.Pearson" = latent.pears.r,
+    "Latent.Spearman" = latent.spear.r,
     "Item.Pearson" = pears.item.r,
     "Item.Spearman" = spear.item.r,
     "Item.PolyCorr.2step" = poly.r.2stp,
     "Item.PolyCorr.ML" = poly.r.ml,
+    #   Additional checking via correlations:
+    "LatentOrigNorm.Pearson" = origltnt.pears.r,
+    "LatentOrigNorm.Spearman" = origltnt.spear.r,
+    "LatentNormVTrsGam.Var1.Pearson" = origvltnt.v1.pears.r, 
+    "LatentNormVTrsGam.Var1.Spearman" = origvltnt.v1.spear.r, 
+    "LatentNormVTrsGam.Var2.Pearson" = origvltnt.v2.pears.r, 
+    "LatentNormVTrsGam.Var2.Spearman" = origvltnt.v2.spear.r, 
+    #   Additional checking via ICC:
+    "LatentNormVTrsGam.Var1.ICCc1" = origvltnt.v1.icc.c1,
+    "LatentNormVTrsGam.Var1.ICCc1.locl" = origvltnt.v1.icc.c1.locl,
+    "LatentNormVTrsGam.Var1.ICCc1.upcl" = origvltnt.v1.icc.c1.upcl, 
+    "LatentNormVTrsGam.Var2.ICCc1" = origvltnt.v2.icc.c1, 
+    "LatentNormVTrsGam.Var2.ICCc1.locl" = origvltnt.v2.icc.c1.locl, 
+    "LatentNormVTrsGam.Var2.ICCc1.upcl" = origvltnt.v2.icc.c1.upcl,
     
     # Observed Distribution Skewness & Kurtosis Results:
     #   Skewness:
     "Ltnt1.ObsSkew" = obs.skew.ltnt1,
     "Ltnt2.ObsSkew" = obs.skew.ltnt2,
     "Item1.ObsSkew" = obs.skew.item1,
-    "Item2.ObsSkew" = obs.skew.item2,
+    "OLtnt1.ObsSkew" = obs.skew.oltnt1,
+    "OLtnt2.ObsSkew" = obs.skew.oltnt2,
     #   Kurtosis:
     "Ltnt1.ObsKurt" = obs.kurt.ltnt1,
     "Ltnt2.ObsKurt" = obs.kurt.ltnt2,
     "Item1.ObsKurt" = obs.kurt.item1,
-    "Item2.ObsKurt" = obs.kurt.item2
+    "Item2.ObsKurt" = obs.kurt.item2,
+    "OLtnt1.ObsKurt" = obs.kurt.oltnt1,
+    "OLtnt2.ObsKurt" = obs.kurt.oltnt2
   )
   
   return(results)
   
   
 } #end function [poly.chor.ser.fntn]
-
 
 
 
