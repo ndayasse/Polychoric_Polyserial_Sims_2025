@@ -1,4 +1,3 @@
-# C.D. Ayasse
 
 # Simulations comparing accuracy of the following correlation methods:
 #   (A) Polychoric (2-step & ML) for ordinal-ordinal vs spearman's (and/or pearson's)
@@ -111,9 +110,6 @@ ints.skewed.fntn <- function(
 
 
 # Polychotomize Continuous Variable Into Ordinal Item (Function): -------------- ####
-
-# C.D. Ayasse
-# 8 December 2023
 
 # Simple function to create ordinal data (polychotomize continuous into ordinal)
 #   just using a vector (continuous variable) and intercepts
